@@ -71,6 +71,7 @@ class _Household:
             self.leader.client._handle_groups_event(cast("Any", self.next_groups))
 
         self.apis[LEADER].groups.modify_group_members.side_effect = _modify_group_members
+        self.apis[LEADER].groups.get_groups.side_effect = lambda *_args: self.next_groups
 
     @property
     def leader(self) -> SonosPlayer:
@@ -178,6 +179,43 @@ async def test_a_member_added_back_right_away_is_synced_again() -> None:
     assert synced_to_after_removal is None
     assert home.member.synced_to == LEADER
     assert home.member.client.player.is_passive
+
+
+@pytest.mark.asyncio
+async def test_a_leader_that_reports_the_removal_late_does_not_hold_it_up() -> None:
+    """A leader that holds its groups event back is asked for its grouping instead."""
+    home = _Household()
+    home.apis[LEADER].groups.modify_group_members.side_effect = None
+    home.answer_groups(MEMBER, LEFT)
+
+    start = time.monotonic()
+    await home.leader.set_members(player_ids_to_remove=[MEMBER])
+    elapsed = time.monotonic() - start
+    await asyncio.sleep(0)
+
+    assert elapsed < 1
+    assert home.leader.client.player.group_members == [LEADER, OTHER]
+    assert home.member.synced_to is None
+
+
+@pytest.mark.asyncio
+async def test_a_member_added_back_soon_after_its_removal_is_synced_at_once() -> None:
+    """Right after a removal the leader reports the next change late; it is asked instead."""
+    home = _Household()
+    home.answer_groups(MEMBER, LEFT)
+    await home.leader.set_members(player_ids_to_remove=[MEMBER])
+
+    home.next_groups = SYNCED
+    home.apis[LEADER].groups.modify_group_members.side_effect = None
+    home.answer_groups(MEMBER, SYNCED)
+    start = time.monotonic()
+    await home.leader.set_members(player_ids_to_add=[MEMBER])
+    elapsed = time.monotonic() - start
+    await asyncio.sleep(0)
+
+    assert elapsed < 1
+    assert home.leader.client.player.group_members == [LEADER, MEMBER, OTHER]
+    assert home.member.synced_to == LEADER
 
 
 @pytest.mark.asyncio

@@ -897,6 +897,9 @@ class SonosPlayer(Player):
                 player_ids_to_add=player_ids_to_add,
                 player_ids_to_remove=player_ids_to_remove,
             )
+            if self.connected:
+                # shortly after an earlier change the leader reports this one seconds late as well
+                await self._refresh_groups()
             await self._wait_for_group_members(player_ids_to_add, player_ids_to_remove)
             members = (
                 self.mass.players.get_player(player_id)
